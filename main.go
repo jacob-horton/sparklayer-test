@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
+	"os"
 	"sort"
 )
 
@@ -19,24 +19,45 @@ type Astronauts struct {
 	People []Person `json:"people"`
 }
 
-// http://api.open-notify.org/astros.json
-func main() {
-	url := "http://api.open-notify.org/astros.json"
+// Write astronauts to CSV file
+func writeToFile(filename string, astronauts Astronauts) {
+	// Create file
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
 
+	// Close file when function ends
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	// Write to file
+	file.WriteString("Name,Craft\n")
+	for _, astronaut := range astronauts.People {
+		file.WriteString(fmt.Sprintf("%s,%s\n", astronaut.Name, astronaut.Craft))
+	}
+}
+
+// Get the astronaut data from the specified URL
+func getData(url string) []byte {
 	// Create the request
-	request, getErr := http.NewRequest(http.MethodGet, url, nil)
-	if getErr != nil {
-		log.Fatal(getErr)
+	request, reqErr := http.NewRequest(http.MethodGet, url, nil)
+	if reqErr != nil {
+		panic(reqErr)
 	}
 
 	// Create the client and do the request
 	client := http.Client{}
 	response, getErr := client.Do(request)
 	if getErr != nil {
-		log.Fatal(getErr)
+		panic(getErr)
 	}
 
-	// Check the response wasn't empty
+	// Close body when function ends
 	if response.Body != nil {
 		defer response.Body.Close()
 	}
@@ -44,16 +65,25 @@ func main() {
 	// Read the body of the response
 	body, readErr := ioutil.ReadAll(response.Body)
 	if readErr != nil {
-		log.Fatal(readErr)
+		panic(readErr)
 	}
 
-	// Parse the JSON data
+	return body
+}
+
+// Parse the JSON data
+func parseAstronauts(body []byte) Astronauts {
 	astronauts := Astronauts{}
 	parseErr := json.Unmarshal(body, &astronauts)
 	if parseErr != nil {
-		log.Fatal(parseErr)
+		panic(parseErr)
 	}
 
+	return astronauts
+}
+
+// Sort astronauts by craft, reverse alphabetically, then by name alphabetically
+func sortAstronauts(astronauts *Astronauts) {
 	// Sort by craft, reverse alphabetically
 	sort.SliceStable(astronauts.People, func(i, j int) bool {
 		leftCraft := astronauts.People[i].Craft
@@ -66,9 +96,21 @@ func main() {
 			return leftCraft > rightCraft
 		}
 	})
+}
+
+// http://api.open-notify.org/astros.json
+func main() {
+	url := "http://api.open-notify.org/astros.json"
+	body := getData(url)
+	astronauts := parseAstronauts(body)
+	sortAstronauts(&astronauts)
 
 	// Print as CSV
+	fmt.Println("Name,Craft")
 	for _, astronaut := range astronauts.People {
 		fmt.Printf("%s,%s\n", astronaut.Name, astronaut.Craft)
 	}
+
+	// Write to CSV file
+	writeToFile("output.csv", astronauts)
 }
